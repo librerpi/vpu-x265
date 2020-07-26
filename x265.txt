@@ -1,0 +1,119 @@
+dct32_c:
+  src, int16 matrix of 32x32, with a stride
+  dst, int16 matrix of 32x32
+  srcStride, stride for src array
+
+  block, 32x32 int16 matrix
+  coef, 32x32 int16 matrix
+  for i in 0..31 do
+    block[i][0:31] = src[i][0:31] (respecting stride)
+
+  partialButterfly32(block -> coef, shift=4 + X265_DEPTH - 8)
+  partialButterfly32(coef -> dest, shift = 11)
+
+partialButterfly32:
+  src, int16 maxtrix of 32x32
+  dst, int16 matrix of 32x32
+
+for each line:
+  phase 1
+  load src into vector file, 32 16bit ints
+  vector file: src_16bit_32(64)
+  column 0, rows 0:31 = src
+
+  phase 2
+  compute E and O arrays, 16 elements each, 32bits per slot
+  discard src
+  vector file: E_32bit_16(64) + O_32bit_16(64)
+  column 0, rows 48:63 = E
+  column 0, rows 0:15 = O
+
+  phase 3
+  compute EE and EO arrays, 8 elements each, 32 bits
+  discard E
+  vector file: O_32bit_16(64) + EE_32bit_8(32) + EO_32bit_8(32)
+  column 0, rows 0:15 = O
+  column 0, rows 16:23 = EO
+  column 0, rows 48:55 = EE
+
+  phase 4
+  compute EEE and EEO arrays, 4 elements each, 32bits
+  discard EE
+  vector file: O_32bit_16(64) + EO_32bit_8(32) + EEE_32bit_4(16) + EEO_32bit_4(16)
+  column 0, rows 0:15 = O
+  column 0, rows 16:23 = EO
+  column 0, rows 24:27 = EEO
+
+  phase 5
+  compute EEEE and EEEO arrays, 2 elements each, 32 bits
+  discard EEE
+  vector file: O_32bit_16(64) + EO_32bit_8(32) + EEO_32bit_4(16) + EEEE_32bit_2(8) + EEEO_32bit_2(8)
+  column 0, rows 0:15 = O
+  column 0, rows 16:23 = EO
+  column 0, rows 24:27 = EEO
+  column 0, rows 28:29 = EEEE
+  column 0, rows 30:31 = EEEO
+
+  phase 6
+  dst[0]  = (con[0][0]  * EEEE[0] + con[0][1]  * EEEE[1] + add) >> shift
+  dst[16] = (con[16][0] * EEEE[0] + con[16][1] * EEEE[1] + add) >> shift
+  dst[8]  = (con[8][0]  * EEEO[0] + con[8][1]  * EEEO[1] + add) >> shift
+  dst[24] = (con[24][0] * EEEO[0] + con[24][1] * EEEO[1] + add) >> shift
+  discard EEEE, EEEO
+  vector file: O_32bit_16(64) + EO_32bit_8(32) + EEO_32bit_4(16) + dst_16bit_4(8)
+  column 0, rows 0:15 = O
+  column 0, rows 16:23 = EO
+  column 0, rows 24:27 = EEO
+  column 0, rows 32:63 = dst (partial)
+
+  phase 7
+  dst[4]  = (con[4][0]  * EEO[0] + con[4][1]  * EEO[1] + con[4][2]  * EEO[2] + con[4][3]  * EEO[3] + add) >> shift
+  dst[12] = (con[12][0] * EEO[0] + con[12][1] * EEO[1] + con[12][2] * EEO[2] + con[12][3] * EEO[3] + add) >> shift
+  dst[20] = (con[20][0] * EEO[0] + con[20][1] * EEO[1] + con[20][2] * EEO[2] + con[20][3] * EEO[3] + add) >> shift
+  dst[28] = (con[28][0] * EEO[0] + con[28][1] * EEO[1] + con[28][2] * EEO[2] + con[28][3] * EEO[3] + add) >> shift
+  discard EEO
+  vector file: O_32bit_16(64) + EO_32bit_8(32) + dst_16bit_8(16)
+  column 0, rows 0:15 = O
+  column 0, rows 16:23 = EO
+  column 0, rows 32:63 = dst (partial)
+
+  phase 8
+  dst[2]  = (con[2][0]  * EO[0] + con[2][1]  * EO[1] + con[2][2]  * EO[2] + con[2][3]  * EO[3] + con[2][4]  * EO[4] + con[2][5]  * EO[5] + con[2][6]  * EO[6] * con[2][7]  * EO[7] + add) >> shift
+  dst[6]  = (con[6][0]  * EO[0] + con[6][1]  * EO[1] + con[6][2]  * EO[2] + con[6][3]  * EO[3] + con[6][4]  * EO[4] + con[6][5]  * EO[5] + con[6][6]  * EO[6] * con[6][7]  * EO[7] + add) >> shift
+  dst[10] = (con[10][0] * EO[0] + con[10][1] * EO[1] + con[10][2] * EO[2] + con[10][3] * EO[3] + con[10][4] * EO[4] + con[10][5] * EO[5] + con[10][6] * EO[6] * con[10][7] * EO[7] + add) >> shift
+  dst[14] = (con[14][0] * EO[0] + con[14][1] * EO[1] + con[14][2] * EO[2] + con[14][3] * EO[3] + con[14][4] * EO[4] + con[14][5] * EO[5] + con[14][6] * EO[6] * con[14][7] * EO[7] + add) >> shift
+  dst[18] = (con[18][0] * EO[0] + con[18][1] * EO[1] + con[18][2] * EO[2] + con[18][3] * EO[3] + con[18][4] * EO[4] + con[18][5] * EO[5] + con[18][6] * EO[6] * con[18][7] * EO[7] + add) >> shift
+  dst[22] = (con[22][0] * EO[0] + con[22][1] * EO[1] + con[22][2] * EO[2] + con[22][3] * EO[3] + con[22][4] * EO[4] + con[22][5] * EO[5] + con[22][6] * EO[6] * con[22][7] * EO[7] + add) >> shift
+  dst[26] = (con[26][0] * EO[0] + con[26][1] * EO[1] + con[26][2] * EO[2] + con[26][3] * EO[3] + con[26][4] * EO[4] + con[26][5] * EO[5] + con[26][6] * EO[6] * con[26][7] * EO[7] + add) >> shift
+  dst[30] = (con[30][0] * EO[0] + con[30][1] * EO[1] + con[30][2] * EO[2] + con[30][3] * EO[3] + con[30][4] * EO[4] + con[30][5] * EO[5] + con[30][6] * EO[6] * con[30][7] * EO[7] + add) >> shift
+  discard EO
+  vector file: O_32bit_16(64) dst_16bit_16(32)
+  column 0, rows 0:15 = O
+  column 0, rows 32:63 = dst (partial)
+
+  phase 9
+  for x in 1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 do:
+    dst[x]  = (con[x][0]  * O[0] + con[x][1]  * O[1] + con[x][2] * O[2] + con[x][3] * O[3] + con[x][4] * O[4] + con[x][5] * O[5] + con[x][6] * O[6] + con[x][7] * O[7] + con[x][8] * O[8] + con[x][9] * O[9] + con[x][10] * O[10] + con[x][11] * O[11] + con[x][12] * O[12] + con[x][13] * O[13] + con[x][14] * O[14] + con[x][15] * O[15] + add) >> shift
+  discard O
+  vector file: dst_16bit_32(64)
+  column 0, rows 32:63 = dst (complete)
+
+
+dct32:
+  load 16 rows of src[0:15] into columns 0:15 rows 0:31
+  partialButterfly32_half(shift=4 + X265_DEPTH - 8)
+  move columns 0:15, rows 32:63 -> columns 0:15, rows 0:31
+  partialButterfly32_half(shift = 11)
+  store 16 rows from columns 0:15, rows 32:63 -> dst[0:15]
+
+  load 16 rows of src[16:31] into columns 0:15 rows 0:31
+  partialButterfly32_half(shift=4 + X265_DEPTH - 8)
+  move columns 0:15, rows 32:63 -> columns 0:15, rows 0:31
+  partialButterfly32_half(shift = 11)
+  store 16 rows from columns 0:15, rows 32:63 -> dst[16:31
+
+partialButterfly32_half:
+  inputs:
+    columns 0:15, rows 0:31, 16 rows from the src matrix
+  outputs:
+    columns 0:15, rows 32:63, 16 rows from dest
